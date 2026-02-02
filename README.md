@@ -1,16 +1,2 @@
-# tunewave
-
-A new Flutter project.
-
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+# TuneWave-V-0.1
+TuneWave is a Flutter-based music discovery app that allows users to explore songs, view high-quality cover art, and read song lyrics. The app integrates multiple music APIs to deliver detailed track and artist information with a clean and responsive UI.
