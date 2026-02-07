@@ -1,18 +1,18 @@
 // home_screen.dart
 // ignore_for_file: prefer_final_fields, deprecated_member_use, use_build_context_synchronously
 
-import 'package:clone_mp/screen/artist_screen.dart';
+import 'package:clone_mp/services/api_service.dart';
+import 'package:clone_mp/models/song_model.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'package:clone_mp/data/updated_music_data.dart';
 import 'package:clone_mp/services/auth_service.dart';
 import 'package:clone_mp/models/user_model.dart';
 import 'package:clone_mp/services/ui_state_service.dart';
 
 class HomeScreen extends StatefulWidget {
-  final Function(Map<String, String> song) onPlaySong;
-  final Map<String, String>? currentSong;
+  final Function(SongModel song) onPlaySong;
+  final SongModel? currentSong;
   final bool isPlaying;
   final VoidCallback onTogglePlayPause;
 
@@ -30,16 +30,12 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   String selectedFilter = "All";
-  int _topChartsCount = 5;
-  int _topArtistsCount = 5;
-  bool _isPlaylistsExpanded = false;
+  bool isLoading = true;
 
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  List<SongModel> recentlyPlayed = [];
+  List<SongModel> topCharts = [];
 
-  static const Color primaryOrange = Color.fromRGBO(255, 102, 0, 1);
-  static const Color mediumOrange = Color(0xFFFF781F);
-  static const Color veryLightOrange = Color(0xFFFF9D5C);
-
+  // Static playlists for UI demo (can be APIified later)
   final List<Map<String, String>> featuredPlaylists = [
     {
       "title": "Today's Top Hits",
@@ -49,49 +45,65 @@ class _HomeScreenState extends State<HomeScreen> {
     },
     {
       "title": "Sem Bihari",
-      "subtitle": "New music from hip-hop's heavy-hitters",
+      "subtitle": "New music from hip-hop",
       "image":
           "https://i.ibb.co/TDx4fd0B/Whats-App-Image-2025-09-02-at-10-25-07-PM.jpg",
       "songCount": "65",
     },
-    {
-      "title": "All Out 2010s",
-      "subtitle": "The biggest songs of the 2010s",
-      "image": "https://i.ibb.co/fJZxpQZ/download-3.jpg",
-      "songCount": "75",
-    },
-    {
-      "title": "Chill Pop",
-      "subtitle": "Chill out with these pop gems",
-      "image": "https://i.ibb.co/fdBHDjMJ/download-2.jpg",
-      "songCount": "45",
-    },
-    {
-      "title": "Rock Classics",
-      "subtitle": "Legendary rock anthems",
-      "image": "https://i.ibb.co/pr9MsT0t/download-1.jpg",
-      "songCount": "100",
-    },
-    {
-      "title": "Acoustic Hits",
-      "subtitle": "Unplugged and beautiful",
-      "image": "https://i.ibb.co/2TcFcBt/download.jpg",
-      "songCount": "40",
-    },
+  ];
+
+  bool showAllTopCharts = false;
+
+  final List<Map<String, String>> popularArtists = [
+    {"name": "Seedhe Maut", "image": "https://tse2.mm.bing.net/th?q=Seedhe+Maut+Rapper&w=500&h=500&c=7"},
+    {"name": "Arijit Singh", "image": "https://tse2.mm.bing.net/th?q=Arijit+Singh+Singer&w=500&h=500&c=7"},
+    {"name": "Drake", "image": "https://tse2.mm.bing.net/th?q=Drake+Rapper&w=500&h=500&c=7"},
+    {"name": "Dua Lipa", "image": "https://tse2.mm.bing.net/th?q=Dua+Lipa&w=500&h=500&c=7"},
+    {"name": "Billie Eilish", "image": "https://tse2.mm.bing.net/th?q=Billie+Eilish&w=500&h=500&c=7"},
+    {"name": "Raftaar", "image": "https://tse2.mm.bing.net/th?q=Raftaar+Rapper&w=500&h=500&c=7"},
+    {"name": "Karma", "image": "https://tse2.mm.bing.net/th?q=Karma+Rapper&w=500&h=500&c=7"},
+    {"name": "Afkap", "image": "https://tse2.mm.bing.net/th?q=Afkap+Rapper&w=500&h=500&c=7"},
+    {"name": "OG Lucifer", "image": "https://tse2.mm.bing.net/th?q=OG+Lucifer+Rapper&w=500&h=500&c=7"},
   ];
 
   final List<String> genres = [
     "All",
     "Pop",
     "Hip-Hop",
-    "Desi Hip-Hop",
-    "Rock",
     "Bollywood",
-    "R&B",
-    "Punjabi Pop",
-    "Dance-Pop",
-    "Country",
+    "Punjabi",
+    "Indie",
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => isLoading = true);
+    try {
+      final api = ApiService();
+      // Fetch some default content
+      // Note: Queries can be adjusted based on preference
+      final recent = await api.searchSongs("new hindi songs");
+      final charts = await api.searchSongs("Desi Hip Hop Hits");
+
+      if (mounted) {
+        setState(() {
+          recentlyPlayed = recent;
+          topCharts = charts;
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
+      debugPrint("Error loading home data: $e");
+    }
+  }
 
   Future<void> _showImprovedLogoutDialog() async {
     return showDialog<void>(
@@ -107,7 +119,11 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               const SizedBox(height: 10),
-              const Icon(Icons.logout_rounded, color: primaryOrange, size: 50),
+              const Icon(
+                Icons.logout_rounded,
+                color: Color(0xFFFF6600),
+                size: 50,
+              ),
               const SizedBox(height: 20),
               Text(
                 'Confirm Sign Out',
@@ -181,33 +197,15 @@ class _HomeScreenState extends State<HomeScreen> {
     final theme = Theme.of(context);
     final uiStateService = Provider.of<UiStateService>(context);
 
-    final List<Map<String, String>> recentlyPlayed = allSongs.take(4).toList();
-    final List<Map<String, String>> filteredSongs = (selectedFilter == "All")
-        ? allSongs
-        : allSongs.where((song) => song['genre'] == selectedFilter).toList();
-    final List<Map<String, String>> topCharts = filteredSongs
-        .skip(4)
-        .take(_topChartsCount)
-        .toList();
-    final List<Map<String, dynamic>> topArtists = allArtists
-        .take(_topArtistsCount)
-        .toList();
-    final bool canExpandPlaylists = featuredPlaylists.length > 2;
-    final String playlistButtonText = _isPlaylistsExpanded
-        ? "Show Less"
-        : "See All";
-    final bool canExpandArtists = allArtists.length > 5;
-    final bool isArtistsExpanded = _topArtistsCount > 5;
-    final String artistButtonText = isArtistsExpanded ? "Show Less" : "See All";
-    final int totalAvailableChartSongs = (filteredSongs.length - 4)
-        .clamp(0, double.infinity)
-        .toInt();
-    final bool canExpandCharts = totalAvailableChartSongs > 5;
-    final bool isChartsExpanded = _topChartsCount > 5;
-    final String chartButtonText = isChartsExpanded ? "Show Less" : "See All";
+    if (isLoading) {
+      return Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: theme.colorScheme.primary),
+        ),
+      );
+    }
 
     return Scaffold(
-      key: _scaffoldKey,
       drawer: _buildAppDrawer(),
       onDrawerChanged: (isOpened) {
         if (isOpened) {
@@ -252,11 +250,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         initialData: AuthService.instance.currentUser,
                         builder: (context, snapshot) {
                           final user = snapshot.data;
-
                           final String firstLetter =
                               user != null && user.name.isNotEmpty
                               ? user.name[0].toUpperCase()
-                              : 'G'; // G for Guest
+                              : 'G';
                           final String placeholderUrl =
                               'https://placehold.co/100x100/FF9D5C/ffffff.png?text=$firstLetter';
 
@@ -287,6 +284,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   centerTitle: false,
                 ),
               ),
+
               SliverToBoxAdapter(
                 child: Container(
                   height: 50,
@@ -306,10 +304,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           onSelected: (selected) {
                             setState(() {
                               selectedFilter = genre;
-                              _topChartsCount = 5;
+                              // In a real app we would refetch based on genre
+                              // _loadData(genre);
                             });
                           },
-                          selectedColor: primaryOrange,
+                          selectedColor: const Color(0xFFFF6600),
                           backgroundColor: theme.colorScheme.surface
                               .withOpacity(0.5),
                           labelStyle: TextStyle(
@@ -326,11 +325,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+
               SliverToBoxAdapter(
-                child: _buildSectionHeader(
-                  "Recently Played",
-                  showSeeAll: false,
-                ),
+                child: _buildSectionHeader("Recently Added / Trending"),
               ),
               SliverToBoxAdapter(
                 child: SizedBox(
@@ -346,18 +343,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+
               SliverToBoxAdapter(
                 child: _buildSectionHeader(
                   "Top Charts",
-                  showSeeAll: canExpandCharts,
-                  seeAllText: chartButtonText,
+                  showSeeAll: true,
+                  seeAllText: showAllTopCharts ? "Show Less" : "See More",
                   onSeeAll: () {
                     setState(() {
-                      if (isChartsExpanded) {
-                        _topChartsCount = 5;
-                      } else {
-                        _topChartsCount = 15;
-                      }
+                      showAllTopCharts = !showAllTopCharts;
                     });
                   },
                 ),
@@ -368,7 +362,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         height: 100,
                         alignment: Alignment.center,
                         child: Text(
-                          'No songs found for "$selectedFilter"',
+                          'Loading songs...',
                           style: TextStyle(
                             color: theme.colorScheme.onSurface.withOpacity(0.7),
                             fontSize: 16,
@@ -380,33 +374,64 @@ class _HomeScreenState extends State<HomeScreen> {
                       delegate: SliverChildBuilderDelegate((context, index) {
                         final song = topCharts[index];
                         return _buildSongListTile(song, index + 1);
-                      }, childCount: topCharts.length),
+                      },
+                      childCount: showAllTopCharts
+                          ? topCharts.length
+                          : (topCharts.length > 5 ? 5 : topCharts.length),
+                      ),
                     ),
-              _buildArtistSection(
-                artists: topArtists,
-                showSeeAll: canExpandArtists,
-                seeAllText: artistButtonText,
-                onSeeAll: () {
-                  setState(() {
-                    if (isArtistsExpanded) {
-                      _topArtistsCount = 5;
-                    } else {
-                      _topArtistsCount = allArtists.length;
-                    }
-                  });
-                },
+
+              // --- Popular Artists Section ---
+              SliverToBoxAdapter(
+                child: _buildSectionHeader("Your Favorite Artists"),
               ),
               SliverToBoxAdapter(
-                child: _buildSectionHeader(
-                  "Featured Playlists",
-                  showSeeAll: canExpandPlaylists,
-                  seeAllText: playlistButtonText,
-                  onSeeAll: () {
-                    setState(() {
-                      _isPlaylistsExpanded = !_isPlaylistsExpanded;
-                    });
-                  },
+                child: SizedBox(
+                  height: 140, // Height for avatar + text
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: popularArtists.length,
+                    itemBuilder: (context, index) {
+                      final artist = popularArtists[index];
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.pushNamed(context, '/artist', arguments: artist);
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.only(right: 16),
+                          width: 100,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              CircleAvatar(
+                                radius: 40,
+                                backgroundImage: NetworkImage(artist["image"]!),
+                                backgroundColor: Colors.grey[800],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                artist["name"]!,
+                                style: TextStyle(
+                                  color: theme.colorScheme.onSurface,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
+              ),
+
+              SliverToBoxAdapter(
+                child: _buildSectionHeader("Featured Playlists"),
               ),
               SliverToBoxAdapter(
                 child: SizedBox(
@@ -414,7 +439,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: featuredPlaylists.length.clamp(0, 2),
+                    itemCount: featuredPlaylists.length,
                     itemBuilder: (context, index) {
                       final playlist = featuredPlaylists[index];
                       return _buildPlaylistCard(playlist);
@@ -422,386 +447,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
-              if (_isPlaylistsExpanded)
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  sliver: SliverGrid(
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          mainAxisSpacing: 16,
-                          crossAxisSpacing: 16,
-                          childAspectRatio: 160 / 200,
-                        ),
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final playlist = featuredPlaylists[index + 2];
-                        return _buildPlaylistCard(playlist, useMargin: false);
-                      },
-                      childCount: (featuredPlaylists.length - 2).clamp(0, 100),
-                    ),
-                  ),
-                ),
+
               const SliverToBoxAdapter(child: SizedBox(height: 100)),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildArtistSection({
-    required List<Map<String, dynamic>> artists,
-    required bool showSeeAll,
-    required String seeAllText,
-    required VoidCallback onSeeAll,
-  }) {
-    return SliverToBoxAdapter(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSectionHeader(
-            "Top Artists",
-            showSeeAll: showSeeAll,
-            seeAllText: seeAllText,
-            onSeeAll: onSeeAll,
-          ),
-          SizedBox(
-            height: 160,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: artists.length,
-              itemBuilder: (context, index) {
-                final artist = artists[index];
-                return _buildArtistCard(artist);
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildArtistCard(Map<String, dynamic> artist) {
-    final theme = Theme.of(context);
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => ArtistScreen(artist: artist)),
-        );
-      },
-      child: Container(
-        width: 120,
-        margin: const EdgeInsets.only(right: 16),
-        child: Column(
-          children: [
-            CircleAvatar(
-              radius: 50,
-              backgroundImage: NetworkImage(artist['image']!),
-              backgroundColor: veryLightOrange.withOpacity(0.5),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              artist['name']!,
-              style: TextStyle(
-                color: theme.colorScheme.onSurface,
-                fontWeight: FontWeight.bold,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAppDrawer() {
-    final String? currentRoute = ModalRoute.of(context)?.settings.name;
-    final theme = Theme.of(context);
-    final uiStateService = Provider.of<UiStateService>(context, listen: false);
-
-    final Color drawerBackgroundColor = theme.brightness == Brightness.light
-        ? const Color(0xFFF1F4F8)
-        : const Color(0xFF1E1E1E);
-    final Color textColor = theme.colorScheme.onSurface;
-    final Color iconColor = theme.unselectedWidgetColor;
-    final Color selectedColor = primaryOrange;
-    final Color selectedTileColor = primaryOrange.withOpacity(0.1);
-
-    return Drawer(
-      backgroundColor: drawerBackgroundColor,
-      child: Column(
-        children: [
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                StreamBuilder<UserModel?>(
-                  stream: AuthService.instance.userStream,
-                  initialData: AuthService.instance.currentUser,
-                  builder: (context, snapshot) {
-                    final user = snapshot.data;
-                    if (user == null) {
-                      return UserAccountsDrawerHeader(
-                        accountName: const Text(
-                          'Guest User',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                            color: Colors.white,
-                          ),
-                        ),
-                        accountEmail: const Text(
-                          'Not logged in',
-                          style: TextStyle(color: Colors.white70),
-                        ),
-                        currentAccountPicture: CircleAvatar(
-                          backgroundColor: Colors.white,
-                          radius: 32,
-                          child: CircleAvatar(
-                            radius: 30,
-                            backgroundImage: NetworkImage(
-                              'https://placehold.co/100x100/FF9D5C/ffffff.png?text=G',
-                            ),
-                          ),
-                        ),
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [primaryOrange, veryLightOrange],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                        ),
-                      );
-                    }
-
-                    final String firstLetter = user.name.isNotEmpty
-                        ? user.name[0].toUpperCase()
-                        : '?';
-                    final String placeholderUrl =
-                        'https://placehold.co/100x100/FF9D5C/ffffff.png?text=$firstLetter';
-
-                    return UserAccountsDrawerHeader(
-                      accountName: Text(
-                        user.name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: Colors.white,
-                        ),
-                      ),
-                      accountEmail: Text(
-                        user.email,
-                        style: const TextStyle(color: Colors.white70),
-                      ),
-                      currentAccountPicture: Container(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
-                        child: CircleAvatar(
-                          radius: 30,
-                          backgroundImage: NetworkImage(
-                            user.imageUrl ?? placeholderUrl,
-                          ),
-                        ),
-                      ),
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [primaryOrange, veryLightOrange],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                _buildDrawerItem(
-                  icon: Icons.person_outline,
-                  text: 'Profile',
-                  isSelected: currentRoute == '/profile',
-                  onTap: () {
-                    Navigator.pop(context);
-                    if (currentRoute != '/profile') {
-                      uiStateService.hideMiniPlayer();
-                      Navigator.pushNamed(context, '/profile').then((_) {
-                        uiStateService.showMiniPlayer();
-                      });
-                    }
-                  },
-                  selectedColor: selectedColor,
-                  iconColor: iconColor,
-                  textColor: textColor,
-                  selectedTileColor: selectedTileColor,
-                ),
-                _buildDrawerItem(
-                  icon: Icons.favorite_border,
-                  text: 'Liked Songs',
-                  isSelected: currentRoute == '/liked_songs',
-                  onTap: () {
-                    Navigator.pop(context);
-                    if (currentRoute != '/liked_songs') {
-                      uiStateService.hideMiniPlayer();
-                      Navigator.pushNamed(context, '/liked_songs').then((_) {
-                        uiStateService.showMiniPlayer();
-                      });
-                    }
-                  },
-                  selectedColor: selectedColor,
-                  iconColor: iconColor,
-                  textColor: textColor,
-                  selectedTileColor: selectedTileColor,
-                ),
-                _buildDrawerItem(
-                  icon: Icons.notifications_outlined,
-                  text: 'Notifications',
-                  isSelected: currentRoute == '/notifications',
-                  onTap: () {
-                    Navigator.pop(context);
-                    if (currentRoute != '/notifications') {
-                      uiStateService.hideMiniPlayer();
-                      Navigator.pushNamed(context, '/notifications').then((_) {
-                        uiStateService.showMiniPlayer();
-                      });
-                    }
-                  },
-                  selectedColor: selectedColor,
-                  iconColor: iconColor,
-                  textColor: textColor,
-                  selectedTileColor: selectedTileColor,
-                ),
-                _buildDrawerItem(
-                  icon: Icons.person_add_alt_outlined,
-                  text: 'Invite Friends',
-                  isSelected: currentRoute == '/invite_friends',
-                  onTap: () {
-                    Navigator.pop(context);
-                    if (currentRoute != '/invite_friends') {
-                      uiStateService.hideMiniPlayer();
-                      Navigator.pushNamed(context, '/invite_friends').then((_) {
-                        uiStateService.showMiniPlayer();
-                      });
-                    }
-                  },
-                  selectedColor: selectedColor,
-                  iconColor: iconColor,
-                  textColor: textColor,
-                  selectedTileColor: selectedTileColor,
-                ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 16.0,
-                    vertical: 8.0,
-                  ),
-                  child: Divider(height: 1, color: Colors.grey),
-                ),
-                _buildDrawerItem(
-                  icon: Icons.settings_outlined,
-                  text: 'Settings',
-                  isSelected: currentRoute == '/settings',
-                  onTap: () {
-                    Navigator.pop(context);
-                    if (currentRoute != '/settings') {
-                      uiStateService.hideMiniPlayer();
-                      Navigator.pushNamed(context, '/settings').then((_) {
-                        uiStateService.showMiniPlayer();
-                      });
-                    }
-                  },
-                  selectedColor: selectedColor,
-                  iconColor: iconColor,
-                  textColor: textColor,
-                  selectedTileColor: selectedTileColor,
-                ),
-                _buildDrawerItem(
-                  icon: Icons.info_outline,
-                  text: 'About',
-                  isSelected: currentRoute == '/about',
-                  onTap: () {
-                    Navigator.pop(context);
-                    if (currentRoute != '/about') {
-                      uiStateService.hideMiniPlayer();
-                      Navigator.pushNamed(context, '/about').then((_) {
-                        uiStateService.showMiniPlayer();
-                      });
-                    }
-                  },
-                  selectedColor: selectedColor,
-                  iconColor: iconColor,
-                  textColor: textColor,
-                  selectedTileColor: selectedTileColor,
-                ),
-                _buildDrawerItem(
-                  icon: Icons.logout,
-                  text: 'Sign Out',
-                  onTap: () async {
-                    uiStateService.hideMiniPlayer();
-                    await _showImprovedLogoutDialog();
-                    uiStateService.showMiniPlayer();
-                  },
-                  selectedColor: selectedColor,
-                  iconColor: iconColor,
-                  textColor: textColor,
-                  selectedTileColor: selectedTileColor,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDrawerItem({
-    required IconData icon,
-    required String text,
-    required VoidCallback onTap,
-    bool isSelected = false,
-    required Color selectedColor,
-    required Color iconColor,
-    required Color textColor,
-    required Color selectedTileColor,
-  }) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      decoration: BoxDecoration(
-        color: isSelected ? selectedTileColor : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Stack(
-        children: [
-          ListTile(
-            leading: Icon(icon, color: isSelected ? selectedColor : iconColor),
-            title: Text(
-              text,
-              style: TextStyle(
-                color: isSelected ? selectedColor : textColor,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              ),
-            ),
-            onTap: onTap,
-          ),
-          if (isSelected)
-            Positioned(
-              left: 0,
-              top: 0,
-              bottom: 0,
-              child: Container(
-                width: 4,
-                decoration: BoxDecoration(
-                  color: selectedColor,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(8),
-                    bottomLeft: Radius.circular(8),
-                  ),
-                ),
-              ),
-            ),
-        ],
       ),
     );
   }
@@ -816,7 +466,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildSectionHeader(
     String title, {
     VoidCallback? onSeeAll,
-    bool showSeeAll = true,
+    bool showSeeAll = false, // defaults to false for now
     String seeAllText = "See All",
   }) {
     final theme = Theme.of(context);
@@ -835,16 +485,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           if (showSeeAll)
             TextButton(
-              onPressed:
-                  onSeeAll ??
-                  () {
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text("Show all $title")));
-                  },
+              onPressed: onSeeAll,
               child: Text(
                 seeAllText,
-                style: const TextStyle(color: mediumOrange),
+                style: const TextStyle(color: Color(0xFFFF781F)),
               ),
             ),
         ],
@@ -852,11 +496,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildSongCard(Map<String, String> song) {
+  Widget _buildSongCard(SongModel song) {
     final theme = Theme.of(context);
     final bool isThisSongPlaying =
         widget.currentSong != null &&
-        widget.currentSong!['title'] == song['title'] &&
+        widget.currentSong!.id == song.id &&
         widget.isPlaying;
 
     return GestureDetector(
@@ -872,7 +516,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: Image.network(
-                    song["image"]!,
+                    song.imageUrl,
                     height: 120,
                     width: 150,
                     fit: BoxFit.cover,
@@ -880,10 +524,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       return Container(
                         height: 120,
                         width: 150,
-                        decoration: BoxDecoration(
-                          color: veryLightOrange.withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        color: Colors.grey[800],
                         child: Icon(
                           Icons.music_note,
                           color: theme.colorScheme.onSurface,
@@ -899,7 +540,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(4),
                       decoration: const BoxDecoration(
-                        color: primaryOrange,
+                        color: Color(0xFFFF6600),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
@@ -913,7 +554,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              song["title"]!,
+              song.name,
               style: TextStyle(
                 color: theme.colorScheme.onSurface,
                 fontWeight: FontWeight.bold,
@@ -922,7 +563,7 @@ class _HomeScreenState extends State<HomeScreen> {
               overflow: TextOverflow.ellipsis,
             ),
             Text(
-              song["artist"]!,
+              song.artist,
               style: TextStyle(
                 color: theme.colorScheme.onSurface.withOpacity(0.7),
                 fontSize: 12,
@@ -936,11 +577,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildSongListTile(Map<String, String> song, int rank) {
+  Widget _buildSongListTile(SongModel song, int rank) {
     final theme = Theme.of(context);
     final bool isThisSongPlaying =
         widget.currentSong != null &&
-        widget.currentSong!['title'] == song['title'] &&
+        widget.currentSong!.id == song.id &&
         widget.isPlaying;
 
     return Container(
@@ -963,39 +604,27 @@ class _HomeScreenState extends State<HomeScreen> {
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Image.network(
-                song["image"]!,
+                song.imageUrl,
                 width: 50,
                 height: 50,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      color: veryLightOrange.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      Icons.music_note,
-                      color: theme.colorScheme.onSurface,
-                    ),
-                  );
-                },
+                errorBuilder: (context, error, stackTrace) =>
+                    Container(width: 50, height: 50, color: Colors.grey),
               ),
             ),
           ],
         ),
         title: Text(
-          song["title"]!,
+          song.name,
           style: TextStyle(
             color: isThisSongPlaying
-                ? primaryOrange
+                ? const Color(0xFFFF6600)
                 : theme.colorScheme.onSurface,
             fontWeight: FontWeight.bold,
           ),
         ),
         subtitle: Text(
-          song["artist"]!,
+          song.artist,
           style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.7)),
         ),
         trailing: Icon(
@@ -1003,7 +632,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ? Icons.pause_circle_filled
               : Icons.play_circle_filled,
           color: isThisSongPlaying
-              ? primaryOrange
+              ? const Color(0xFFFF6600)
               : theme.unselectedWidgetColor,
         ),
         onTap: () => widget.onPlaySong(song),
@@ -1035,20 +664,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 height: 120,
                 width: 160,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    height: 120,
-                    width: 160,
-                    decoration: BoxDecoration(
-                      color: veryLightOrange.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Icons.playlist_play,
-                      color: theme.colorScheme.onSurface,
-                    ),
-                  );
-                },
+                errorBuilder: (context, error, stackTrace) =>
+                    Container(height: 120, width: 160, color: Colors.grey),
               ),
             ),
             const SizedBox(height: 8),
@@ -1070,6 +687,186 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // Reused drawer code, keeping it minimally changed
+  Widget _buildAppDrawer() {
+    final theme = Theme.of(context);
+    final uiStateService = Provider.of<UiStateService>(context, listen: false);
+
+    final Color drawerBackgroundColor = theme.brightness == Brightness.light
+        ? const Color(0xFFF1F4F8)
+        : const Color(0xFF1E1E1E);
+    final Color textColor = theme.colorScheme.onSurface;
+    final Color iconColor = theme.unselectedWidgetColor;
+    final Color selectedColor = const Color(0xFFFF6600);
+    final Color selectedTileColor = const Color(0xFFFF6600).withOpacity(0.1);
+
+    return Drawer(
+      backgroundColor: drawerBackgroundColor,
+      child: Column(
+        children: [
+          StreamBuilder<UserModel?>(
+            stream: AuthService.instance.userStream,
+            initialData: AuthService.instance.currentUser,
+            builder: (context, snapshot) {
+              final user = snapshot.data;
+              final String name = user?.name ?? 'Guest User';
+              final String email = user?.email ?? 'Sign in to sync data';
+              final String firstLetter = name.isNotEmpty
+                  ? name[0].toUpperCase()
+                  : 'G';
+              final String placeholderUrl =
+                  'https://placehold.co/100x100/FF9D5C/ffffff.png?text=$firstLetter';
+              final String imageUrl = user?.imageUrl ?? placeholderUrl;
+
+              return UserAccountsDrawerHeader(
+                accountName: Text(
+                  name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                    color: Colors.white,
+                  ),
+                ),
+                accountEmail: Text(
+                  email,
+                  style: const TextStyle(color: Colors.white70),
+                ),
+                currentAccountPicture: GestureDetector(
+                  onTap: () {
+                    Navigator.pop(context);
+                    if (user != null) {
+                      Navigator.pushNamed(context, '/profile');
+                    } else {
+                      Navigator.pushNamed(context, '/login');
+                    }
+                  },
+                  child: CircleAvatar(
+                    backgroundColor: Colors.white,
+                    backgroundImage: NetworkImage(imageUrl),
+                  ),
+                ),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFFFF6600), Color(0xFFFF9D5C)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+              );
+            },
+          ),
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                _buildDrawerItem(
+                  icon: Icons.person_rounded,
+                  text: 'Profile',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.pushNamed(context, '/profile');
+                  },
+                  selectedColor: selectedColor,
+                  iconColor: iconColor,
+                  textColor: textColor,
+                  selectedTileColor: selectedTileColor,
+                ),
+                _buildDrawerItem(
+                  icon: Icons.favorite_rounded,
+                  text: 'Liked Songs',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.pushNamed(context, '/liked_songs');
+                  },
+                  selectedColor: selectedColor,
+                  iconColor: iconColor,
+                  textColor: textColor,
+                  selectedTileColor: selectedTileColor,
+                ),
+                const Divider(),
+                _buildDrawerItem(
+                  icon: Icons.settings_rounded,
+                  text: 'Settings',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.pushNamed(context, '/settings');
+                  },
+                  selectedColor: selectedColor,
+                  iconColor: iconColor,
+                  textColor: textColor,
+                  selectedTileColor: selectedTileColor,
+                ),
+                _buildDrawerItem(
+                  icon: Icons.info_outline_rounded,
+                  text: 'About',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.pushNamed(context, '/about');
+                  },
+                  selectedColor: selectedColor,
+                  iconColor: iconColor,
+                  textColor: textColor,
+                  selectedTileColor: selectedTileColor,
+                ),
+                _buildDrawerItem(
+                  icon: Icons.share_rounded,
+                  text: 'Invite Friends',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.pushNamed(context, '/invite_friends');
+                  },
+                  selectedColor: selectedColor,
+                  iconColor: iconColor,
+                  textColor: textColor,
+                  selectedTileColor: selectedTileColor,
+                ),
+                const Divider(),
+                _buildDrawerItem(
+                  icon: Icons.logout_rounded,
+                  text: 'Sign Out',
+                  onTap: () async {
+                    Navigator.pop(context); // Close drawer first
+                    uiStateService.hideMiniPlayer();
+                    await _showImprovedLogoutDialog();
+                    uiStateService.showMiniPlayer();
+                  },
+                  selectedColor: selectedColor,
+                  iconColor: Colors.red, // Make logout red
+                  textColor: Colors.red,
+                  selectedTileColor: selectedTileColor,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDrawerItem({
+    required IconData icon,
+    required String text,
+    required VoidCallback onTap,
+    bool isSelected = false,
+    required Color selectedColor,
+    required Color iconColor,
+    required Color textColor,
+    required Color selectedTileColor,
+  }) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: isSelected ? selectedTileColor : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: ListTile(
+        leading: Icon(icon, color: isSelected ? selectedColor : iconColor),
+        title: Text(text, style: TextStyle(color: textColor)),
+        onTap: onTap,
       ),
     );
   }

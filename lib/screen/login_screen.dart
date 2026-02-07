@@ -1,6 +1,7 @@
 // ignore_for_file: use_build_context_synchronously, deprecated_member_use
 
 import 'package:clone_mp/services/auth_service.dart';
+import 'package:clone_mp/services/playlist_service.dart';
 import 'package:clone_mp/services/theme_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -132,12 +133,25 @@ class _LoginPageState extends State<LoginPage> {
     await Future.delayed(const Duration(seconds: 2));
 
     final email = _emailController.text;
-    final name = email.split('@')[0];
-    AuthService.instance.login(name, email);
+    final password = _passwordController.text;
 
-    Navigator.pushReplacementNamed(context, '/main');
+    final error = await AuthService.instance.login(email, password);
+
     if (mounted) {
-      setState(() => _isLoading = false);
+      if (error != null) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error), backgroundColor: Colors.red),
+        );
+      } else {
+        // Load user data
+        final user = AuthService.instance.currentUser!;
+        await Provider.of<PlaylistService>(context, listen: false).loadUserData(user.email);
+        await Provider.of<ThemeNotifier>(context, listen: false).loadTheme(user.email);
+
+        setState(() => _isLoading = false);
+        Navigator.pushReplacementNamed(context, '/main');
+      }
     }
   }
 
@@ -328,18 +342,34 @@ class _SignUpPageState extends State<SignUpPage> {
   Future<void> _handleSignUp() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 2));
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Account created successfully! Please log in."),
-        backgroundColor: Colors.green,
-      ),
-    );
-    widget.onGoToLogin?.call();
+    
+    final name = _nameController.text;
+    final email = _emailController.text;
+    final password = _passwordController.text;
+    
+    final error = await AuthService.instance.register(name, email, password);
 
     if (mounted) {
-      setState(() => _isLoading = false);
+      if (error != null) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error), backgroundColor: Colors.red),
+        );
+      } else {
+         // Load user data (empty for new user, but sets the email in services)
+        final user = AuthService.instance.currentUser!;
+        await Provider.of<PlaylistService>(context, listen: false).loadUserData(user.email);
+        await Provider.of<ThemeNotifier>(context, listen: false).loadTheme(user.email);
+
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Account created successfully!"),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pushReplacementNamed(context, '/main');
+      }
     }
   }
 

@@ -1,7 +1,10 @@
 // lib/screen/splash_screen.dart
 import 'dart:async';
 import 'package:clone_mp/services/auth_service.dart';
+import 'package:clone_mp/services/playlist_service.dart';
+import 'package:clone_mp/services/theme_notifier.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -47,10 +50,21 @@ class _SplashScreenState extends State<SplashScreen>
     await Future.delayed(const Duration(seconds: 2));
 
     if (mounted) {
+      final user = AuthService.instance.currentUser;
       // Check if a user was loaded from storage
-      if (AuthService.instance.currentUser != null) {
-        // If yes, go to the main screen
-        Navigator.of(context).pushReplacementNamed('/main');
+      if (user != null) {
+        // Load user-specific data
+        // Check mounted again before using context after async operations
+        final playlistService = Provider.of<PlaylistService>(context, listen: false);
+        final themeNotifier = Provider.of<ThemeNotifier>(context, listen: false);
+        
+        await playlistService.loadUserData(user.email);
+        await themeNotifier.loadTheme(user.email);
+
+        if (mounted) {
+          // If yes, go to the main screen
+          Navigator.of(context).pushReplacementNamed('/main');
+        }
       } else {
         // If no, go to the login screen
         Navigator.of(context).pushReplacementNamed('/login');

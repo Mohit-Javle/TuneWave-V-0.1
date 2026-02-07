@@ -1,26 +1,11 @@
 // screens/liked_songs_screen.dart
 // ignore_for_file: deprecated_member_use
 
-// import 'package:clone_mp/models/user_model.dart';
+
 import 'package:clone_mp/services/music_service.dart';
 import 'package:clone_mp/services/playlist_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
-// Assuming the following Song model exists
-// class Song {
-//   final String id;
-//   final String title;
-//   final String artist;
-//   final String imageUrl;
-
-//   Song({
-//     required this.id,
-//     required this.title,
-//     required this.artist,
-//     required this.imageUrl,
-//   });
-// }
 
 class LikedSongsScreen extends StatelessWidget {
   const LikedSongsScreen({super.key});
@@ -68,7 +53,7 @@ class LikedSongsScreen extends StatelessWidget {
                   onPressed: likedSongs.isEmpty
                       ? null
                       : () {
-                          final shuffledList = List<Song>.from(likedSongs)
+                          final shuffledList = List<SongModel>.from(likedSongs)
                             ..shuffle();
                           musicService.loadPlaylist(shuffledList, 0);
                         },
@@ -111,14 +96,14 @@ class LikedSongsScreen extends StatelessWidget {
                 delegate: SliverChildBuilderDelegate((context, index) {
                   final song = likedSongs[index];
                   return Dismissible(
-                    key: Key(song.title),
+                    key: Key(song.id),
                     direction: DismissDirection.endToStart,
                     onDismissed: (direction) {
                       playlistService.toggleLike(song);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            'Removed "${song.title}" from liked songs.',
+                            'Removed "${song.name}" from liked songs.',
                           ),
                           action: SnackBarAction(
                             label: 'Undo',
@@ -156,7 +141,7 @@ class LikedSongsScreen extends StatelessWidget {
                         ),
                       ),
                       title: Text(
-                        song.title,
+                        song.name,
                         style: TextStyle(
                           color: textDark,
                           fontWeight: FontWeight.w600,

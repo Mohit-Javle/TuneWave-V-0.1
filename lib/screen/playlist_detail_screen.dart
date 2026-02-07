@@ -1,6 +1,7 @@
 // screen/playlist_detail_screen.dart
 // ignore_for_file: deprecated_member_use
 
+
 import 'package:clone_mp/services/music_service.dart';
 import 'package:clone_mp/services/playlist_service.dart';
 import 'package:flutter/material.dart';
@@ -18,7 +19,6 @@ class PlaylistDetailScreen extends StatefulWidget {
 class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   // Method to show rename dialog
   void _showRenamePlaylistDialog() {
-    // This is using listen: false, which is correct for calls inside functions.
     final playlistService = Provider.of<PlaylistService>(
       context,
       listen: false,
@@ -55,7 +55,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   }
 
   // Method to show options for a song
-  void _showSongOptions(Song song) {
+  void _showSongOptions(SongModel song) {
     final playlistService = Provider.of<PlaylistService>(
       context,
       listen: false,
@@ -77,7 +77,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
               onTap: () {
                 playlistService.removeSongFromPlaylist(
                   widget.playlist.id,
-                  song.title,
+                  song.id,
                 );
                 Navigator.pop(context);
               },
@@ -91,9 +91,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // ### FIX: Get the one, shared MusicService from Provider ###
-    // Do NOT create a new one like this: final musicService = MusicService();
-    final musicService = context.read<MusicService>();
+    final musicService = context.watch<MusicService>();
 
     return Consumer<PlaylistService>(
       builder: (context, playlistService, child) {
@@ -104,19 +102,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           orElse: () => widget.playlist,
         );
 
-        final List<Map<String, String>> songMaps = playlistService
-            .getSongsForPlaylist(currentPlaylist);
-
-        final List<Song> playlistSongs = songMaps
-            .map(
-              (songData) => Song(
-                title: songData['title']!,
-                artist: songData['artist']!,
-                assetPath: 'audio/${songData['path']!}',
-                imageUrl: songData['image']!,
-              ),
-            )
-            .toList();
+        final List<SongModel> playlistSongs = currentPlaylist.songs;
 
         return Scaffold(
           body: CustomScrollView(
@@ -125,7 +111,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 context,
                 theme,
                 currentPlaylist.name,
-                songMaps,
+                playlistSongs,
               ),
               _buildActionButtons(
                 context,
@@ -148,14 +134,13 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     BuildContext context,
     ThemeData theme,
     String playlistName,
-    List<Map<String, String>> songMaps,
+    List<SongModel> songs,
   ) {
     return SliverAppBar(
       expandedHeight: 250,
       pinned: true,
       stretch: true,
       backgroundColor: theme.colorScheme.surface,
-      // Icon theme is now inherited, but this is fine
       actions: [
         IconButton(
           icon: const Icon(Icons.edit_outlined),
@@ -181,7 +166,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         background: Stack(
           fit: StackFit.expand,
           children: [
-            _buildPlaylistArt(songMaps),
+            _buildPlaylistArt(songs),
             Container(
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
@@ -201,8 +186,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     );
   }
 
-  Widget _buildPlaylistArt(List<Map<String, String>> songMaps) {
-    if (songMaps.isEmpty) {
+  Widget _buildPlaylistArt(List<SongModel> songs) {
+    if (songs.isEmpty) {
       return Container(
         color: Colors.grey[800],
         child: const Icon(Icons.music_note, color: Colors.white, size: 80),
@@ -212,10 +197,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
       ),
-      itemCount: songMaps.length > 4 ? 4 : songMaps.length,
+      itemCount: songs.length > 4 ? 4 : songs.length,
       physics: const NeverScrollableScrollPhysics(),
       itemBuilder: (context, index) {
-        return Image.network(songMaps[index]['image']!, fit: BoxFit.cover);
+        return Image.network(songs[index].imageUrl, fit: BoxFit.cover);
       },
     );
   }
@@ -223,7 +208,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   SliverToBoxAdapter _buildActionButtons(
     BuildContext context,
     MusicService musicService,
-    List<Song> playlistSongs,
+    List<SongModel> playlistSongs,
     Playlist currentPlaylist, // Pass the current playlist object
   ) {
     return SliverToBoxAdapter(
@@ -271,7 +256,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
               onPressed: playlistSongs.isEmpty
                   ? null
                   : () {
-                      final shuffledList = List<Song>.from(playlistSongs)
+                      final shuffledList = List<SongModel>.from(playlistSongs)
                         ..shuffle();
                       musicService.loadPlaylist(shuffledList, 0);
                     },
@@ -301,7 +286,6 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
               const SizedBox(height: 8),
               Text(
                 "Tap the '+' icon above to add songs.",
-                // ### FIX: Use .withOpacity for cleaner code ###
                 style: TextStyle(
                   color: theme.colorScheme.onSurface.withOpacity(0.7),
                 ),
@@ -315,7 +299,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   }
 
   SliverList _buildSongList(
-    List<Song> playlistSongs,
+    List<SongModel> playlistSongs,
     MusicService musicService,
   ) {
     return SliverList(
@@ -335,7 +319,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
               fit: BoxFit.cover,
             ),
           ),
-          title: Text(song.title),
+          title: Text(song.name),
           subtitle: Text(song.artist),
           trailing: IconButton(
             icon: const Icon(Icons.more_vert),

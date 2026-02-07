@@ -4,6 +4,10 @@
 import 'package:flutter/material.dart';
 import 'package:clone_mp/services/auth_service.dart';
 import 'package:clone_mp/models/user_model.dart';
+import 'package:provider/provider.dart';
+import 'package:clone_mp/services/playlist_service.dart';
+import 'package:clone_mp/services/follow_service.dart';
+import 'package:clone_mp/screen/listening_history_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -249,13 +253,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 30),
                   const Divider(),
                   const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildStatColumn('Playlists', '12'),
-                      _buildStatColumn('Liked Songs', '158'),
-                      _buildStatColumn('Following', '42'),
-                    ],
+                  const SizedBox(height: 10),
+                  Consumer<PlaylistService>(
+                    builder: (context, playlistService, child) {
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _buildStatColumn(
+                            'Playlists',
+                            playlistService.playlists.length.toString(),
+                          ),
+                          _buildStatColumn(
+                            'Liked Songs',
+                            playlistService.likedSongs.length.toString(),
+                          ),
+                          Consumer<FollowService>(
+                            builder: (context, followService, child) {
+                              return _buildStatColumn(
+                                'Following',
+                                followService.followingCount.toString(),
+                              );
+                            },
+                          ),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 20),
                   const Divider(),
@@ -284,7 +306,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       size: 16,
                       color: textLight,
                     ),
-                    onTap: () {},
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const ListeningHistoryScreen()),
+                      );
+                    },
                   ),
                   ListTile(
                     leading: Icon(

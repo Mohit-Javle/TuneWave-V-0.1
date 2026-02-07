@@ -1,6 +1,9 @@
-// ignore_for_file: deprecated_member_use
+// screen/add_songs_screen.dart
+// ignore_for_file: deprecated_member_use, use_build_context_synchronously
 
-import 'package:clone_mp/data/updated_music_data.dart';
+import 'dart:async';
+import 'package:clone_mp/models/song_model.dart';
+import 'package:clone_mp/services/api_service.dart';
 import 'package:clone_mp/services/playlist_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -15,65 +18,94 @@ class AddSongsScreen extends StatefulWidget {
 }
 
 class _AddSongsScreenState extends State<AddSongsScreen> {
-  final Set<String> _selectedSongTitles = {};
-  List<Map<String, String>> _filteredSongs = allSongs;
+  final Set<String> _selectedSongIds = {};
+  final List<SongModel> _selectedSongs = [];
+  List<SongModel> _searchResults = [];
+  bool _isLoading = false;
   final TextEditingController _searchController = TextEditingController();
+  final ApiService _apiService = ApiService();
+  Timer? _debounce;
 
   @override
   void initState() {
     super.initState();
-    // Initially, don't select songs that are already in the playlist
-    _selectedSongTitles.clear();
-    _searchController.addListener(_filterSongs);
+    _selectedSongIds.clear();
+    _selectedSongs.clear();
+    _searchController.addListener(_onSearchChanged);
+    // Optionally load some initial songs (e.g. trending)
+    _performSearch("Arijit Singh"); // Default initial search
   }
 
-  void _filterSongs() {
-    final query = _searchController.text.toLowerCase();
-    setState(() {
-      _filteredSongs = allSongs.where((song) {
-        final title = song['title']?.toLowerCase() ?? '';
-        final artist = song['artist']?.toLowerCase() ?? '';
-        return title.contains(query) || artist.contains(query);
-      }).toList();
+  void _onSearchChanged() {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        _performSearch(_searchController.text);
+      }
     });
+
+    if (_searchController.text.isEmpty) {
+        // optionally clear options or show recent
+    }
+  }
+
+  Future<void> _performSearch(String query) async {
+    if (query.isEmpty) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final results = await _apiService.searchSongs(query);
+      if (mounted) {
+        setState(() {
+          _searchResults = results;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _searchResults = [];
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _debounce?.cancel();
     super.dispose();
   }
 
-  void _onSongSelected(bool? isSelected, String songTitle) {
+  void _onSongSelected(bool? isSelected, SongModel song) {
     setState(() {
       if (isSelected == true) {
-        _selectedSongTitles.add(songTitle);
+        _selectedSongIds.add(song.id);
+        if (!_selectedSongs.any((s) => s.id == song.id)) {
+          _selectedSongs.add(song);
+        }
       } else {
-        _selectedSongTitles.remove(songTitle);
+        _selectedSongIds.remove(song.id);
+        _selectedSongs.removeWhere((s) => s.id == song.id);
       }
     });
   }
 
   void _addSelectedSongsToPlaylist() {
-    if (_selectedSongTitles.isEmpty) return;
+    if (_selectedSongs.isEmpty) return;
 
     final playlistService = Provider.of<PlaylistService>(
       context,
       listen: false,
     );
 
-    // Find the full song maps for the selected titles
-    final songsToAdd = allSongs
-        .where((song) => _selectedSongTitles.contains(song['title']))
-        .toList();
+    playlistService.addSongsToPlaylist(widget.playlist.id, _selectedSongs);
 
-    // ### CHANGE: Use the new, more efficient method ###
-    playlistService.addSongsToPlaylist(widget.playlist.id, songsToAdd);
-
-    Navigator.pop(context); // Go back to the playlist detail screen
+    Navigator.pop(context); 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text("${_selectedSongTitles.length} song(s) added."),
+        content: Text("${_selectedSongs.length} song(s) added."),
         backgroundColor: const Color(0xFFFF6600),
       ),
     );
@@ -82,7 +114,7 @@ class _AddSongsScreenState extends State<AddSongsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bool canAddSongs = _selectedSongTitles.isNotEmpty;
+    final bool canAddSongs = _selectedSongs.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -119,45 +151,47 @@ class _AddSongsScreenState extends State<AddSongsScreen> {
             ),
           ),
           Expanded(
-            child: ListView.builder(
-              itemCount: _filteredSongs.length,
-              itemBuilder: (context, index) {
-                final song = _filteredSongs[index];
-                final songTitle = song['title']!;
-                final isAlreadyInPlaylist = widget.playlist.songTitles.contains(
-                  songTitle,
-                );
-                final isSelected = _selectedSongTitles.contains(songTitle);
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6600)))
+                : ListView.builder(
+                    itemCount: _searchResults.length,
+                    itemBuilder: (context, index) {
+                      final song = _searchResults[index];
+                      // Check if already in playlist (by ID)
+                      final isAlreadyInPlaylist = widget.playlist.songs
+                          .any((s) => s.id == song.id);
+                      final isSelected = _selectedSongIds.contains(song.id);
 
-                return ListTile(
-                  leading: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: Image.network(
-                      song['image']!,
-                      width: 40,
-                      height: 40,
-                      fit: BoxFit.cover,
-                    ),
+                      return ListTile(
+                        leading: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: Image.network(
+                            song.imageUrl,
+                            width: 40,
+                            height: 40,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => Container(color: Colors.grey),
+                          ),
+                        ),
+                        title: Text(song.name),
+                        subtitle: Text(song.artist),
+                        trailing: Checkbox(
+                          value: isSelected || isAlreadyInPlaylist,
+                          onChanged: isAlreadyInPlaylist
+                              ? null
+                              : (bool? value) {
+                                  _onSongSelected(value, song);
+                                },
+                          activeColor: const Color(0xFFFF6600),
+                        ),
+                        onTap: isAlreadyInPlaylist
+                            ? null
+                            : () {
+                                _onSongSelected(!isSelected, song);
+                              },
+                      );
+                    },
                   ),
-                  title: Text(songTitle),
-                  subtitle: Text(song['artist']!),
-                  trailing: Checkbox(
-                    value: isSelected || isAlreadyInPlaylist,
-                    onChanged: isAlreadyInPlaylist
-                        ? null
-                        : (bool? value) {
-                            _onSongSelected(value, songTitle);
-                          },
-                    activeColor: const Color(0xFFFF6600),
-                  ),
-                  onTap: isAlreadyInPlaylist
-                      ? null
-                      : () {
-                          _onSongSelected(!isSelected, songTitle);
-                        },
-                );
-              },
-            ),
           ),
         ],
       ),

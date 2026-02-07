@@ -1,132 +1,188 @@
 // services/playlist_service.dart
-import 'package:clone_mp/data/updated_music_data.dart';
-import 'package:clone_mp/services/music_service.dart';
+import 'dart:convert';
+import 'package:clone_mp/models/song_model.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 class Playlist {
   final String id;
   final String name;
-  final List<String> songTitles;
+  final List<SongModel> songs;
 
-  // This constructor is fine. The default is an unmodifiable list,
-  // which is safe. We will handle creating new lists in the service.
-  Playlist({required this.id, required this.name, this.songTitles = const []});
-}
+  Playlist({required this.id, required this.name, this.songs = const []});
 
-class PlaylistService with ChangeNotifier {
-  // --- LIKED SONGS (No changes here) ---
-  final List<Song> _likedSongs = [];
-  List<Song> get likedSongs => _likedSongs;
-
-  bool isLiked(Song song) {
-    return _likedSongs.any(
-      (s) => s.title == song.title && s.artist == song.artist,
+  factory Playlist.fromJson(Map<String, dynamic> json) {
+    var songList = json['songs'] as List;
+    List<SongModel> songs = songList.map((i) => SongModel.fromJson(i)).toList();
+    return Playlist(
+      id: json['id'],
+      name: json['name'],
+      songs: songs,
     );
   }
 
-  void toggleLike(Song song) {
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'songs': songs.map((s) => s.toJson()).toList(),
+    };
+  }
+}
+
+class PlaylistService with ChangeNotifier {
+  // --- LIKED SONGS ---
+  // --- LIKED SONGS ---
+  List<SongModel> _likedSongs = [];
+  List<SongModel> get likedSongs => _likedSongs;
+  String? _currentUserEmail;
+
+  // Load all user data
+  Future<void> loadUserData(String userEmail) async {
+    _currentUserEmail = userEmail;
+    await _loadLikedSongs();
+    await _loadPlaylists();
+    notifyListeners();
+  }
+
+  Future<void> _loadLikedSongs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'liked_songs_$_currentUserEmail';
+    final jsonString = prefs.getString(key);
+    
+    if (jsonString != null) {
+      final List<dynamic> decoded = jsonDecode(jsonString);
+      _likedSongs = decoded.map((json) => SongModel.fromJson(json)).toList();
+    } else {
+      _likedSongs = [];
+    }
+  }
+
+  Future<void> _loadPlaylists() async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'playlists_$_currentUserEmail';
+    final jsonString = prefs.getString(key);
+    
+    if (jsonString != null) {
+      final List<dynamic> decoded = jsonDecode(jsonString);
+      _playlists = decoded.map((json) => Playlist.fromJson(json)).toList();
+    } else {
+      _playlists = [];
+    }
+  }
+
+  // Clear data on logout
+  void clearData() {
+    _currentUserEmail = null;
+    _likedSongs = [];
+    _playlists = [];
+    notifyListeners();
+  }
+
+  bool isLiked(SongModel song) {
+    return _likedSongs.any((s) => s.id == song.id);
+  }
+
+  Future<void> toggleLike(SongModel song) async {
+    if (_currentUserEmail == null) return; 
+
     if (isLiked(song)) {
-      _likedSongs.removeWhere(
-        (s) => s.title == song.title && s.artist == song.artist,
-      );
+      _likedSongs.removeWhere((s) => s.id == song.id);
     } else {
       _likedSongs.add(song);
     }
     notifyListeners();
+    
+    // Persist changes
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'liked_songs_$_currentUserEmail';
+    final jsonString = jsonEncode(_likedSongs.map((s) => s.toJson()).toList());
+    await prefs.setString(key, jsonString);
   }
 
-  // --- USER-CREATED PLAYLISTS (Changes are below) ---
-  final List<Playlist> _playlists = [];
+  // --- USER-CREATED PLAYLISTS ---
+  List<Playlist> _playlists = [];
   List<Playlist> get playlists => _playlists;
   final Uuid _uuid = const Uuid();
+
+  // (loadUserPlaylists removed as it is merged into loadUserData/private helper)
+
+  Future<void> _savePlaylists() async {
+    if (_currentUserEmail == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'playlists_$_currentUserEmail';
+    final jsonString = jsonEncode(_playlists.map((p) => p.toJson()).toList());
+    await prefs.setString(key, jsonString);
+  }
 
   void createPlaylist(String name) {
     final newPlaylist = Playlist(id: _uuid.v4(), name: name);
     _playlists.add(newPlaylist);
     notifyListeners();
+    _savePlaylists();
   }
 
   void deletePlaylist(String playlistId) {
     _playlists.removeWhere((p) => p.id == playlistId);
     notifyListeners();
+    _savePlaylists();
   }
 
-  List<Map<String, String>> getSongsForPlaylist(Playlist playlist) {
-    List<Map<String, String>> songsData = [];
-    for (var title in playlist.songTitles) {
-      try {
-        final song = allSongs.firstWhere((s) => s['title'] == title);
-        songsData.add(song);
-      } catch (e) {
-        // Song title not found, ignore it.
-      }
-    }
-    return songsData;
-  }
-
-  // ### NEW: A better method to add multiple songs at once ###
-  void addSongsToPlaylist(String playlistId, List<Map<String, String>> songs) {
+  // Add multiple songs at once
+  Future<void> addSongsToPlaylist(String playlistId, List<SongModel> newSongs) async {
     final playlistIndex = _playlists.indexWhere((p) => p.id == playlistId);
     if (playlistIndex == -1) return;
 
     final oldPlaylist = _playlists[playlistIndex];
 
-    // Get the titles of the new songs, filtering out any that are already in the playlist
-    final newTitlesToAdd = songs
-        .map((s) => s['title'])
-        .where(
-          (title) => title != null && !oldPlaylist.songTitles.contains(title),
-        )
-        .cast<String>()
-        .toList();
+    // Filter duplicates
+    final validNewSongs = newSongs.where((newS) {
+      return !oldPlaylist.songs.any((oldS) => oldS.id == newS.id);
+    }).toList();
 
-    // If there are actually new songs to add...
-    if (newTitlesToAdd.isNotEmpty) {
-      // Create a new, updated list of song titles
-      final newSongTitles = List<String>.from(oldPlaylist.songTitles)
-        ..addAll(newTitlesToAdd);
+    if (validNewSongs.isNotEmpty) {
+      final newSongList = List<SongModel>.from(oldPlaylist.songs)
+        ..addAll(validNewSongs);
 
-      // Create a new Playlist object and replace the old one in the list
       _playlists[playlistIndex] = Playlist(
         id: oldPlaylist.id,
         name: oldPlaylist.name,
-        songTitles: newSongTitles,
+        songs: newSongList,
       );
       notifyListeners();
+      await _savePlaylists();
     }
   }
 
-  void renamePlaylist(String playlistId, String newName) {
+  Future<void> renamePlaylist(String playlistId, String newName) async {
     final playlistIndex = _playlists.indexWhere((p) => p.id == playlistId);
     if (playlistIndex != -1) {
       final oldPlaylist = _playlists[playlistIndex];
       _playlists[playlistIndex] = Playlist(
         id: oldPlaylist.id,
         name: newName,
-        songTitles: oldPlaylist.songTitles,
+        songs: oldPlaylist.songs,
       );
       notifyListeners();
+      await _savePlaylists();
     }
   }
 
-  // ### FIX: Rewritten to handle unmodifiable lists correctly ###
-  void removeSongFromPlaylist(String playlistId, String songTitle) {
+  Future<void> removeSongFromPlaylist(String playlistId, String songId) async {
     final playlistIndex = _playlists.indexWhere((p) => p.id == playlistId);
     if (playlistIndex != -1) {
       final oldPlaylist = _playlists[playlistIndex];
+      final newSongList = List<SongModel>.from(oldPlaylist.songs)
+        ..removeWhere((s) => s.id == songId);
 
-      // Create a new list of titles, excluding the one to remove
-      final newSongTitles = List<String>.from(oldPlaylist.songTitles)
-        ..remove(songTitle);
-
-      // Replace the old playlist object with the new one
       _playlists[playlistIndex] = Playlist(
         id: oldPlaylist.id,
         name: oldPlaylist.name,
-        songTitles: newSongTitles,
+        songs: newSongList,
       );
       notifyListeners();
+      await _savePlaylists();
     }
   }
 }

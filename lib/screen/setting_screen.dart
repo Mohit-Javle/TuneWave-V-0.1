@@ -1,6 +1,8 @@
 // screens/settings_screen.dart
 // ignore_for_file: deprecated_member_use
 
+import 'package:clone_mp/services/auth_service.dart';
+import 'package:clone_mp/services/playlist_service.dart';
 import 'package:clone_mp/services/theme_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -72,6 +74,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
               leading: Icon(Icons.lock_outline, color: iconColor),
               title: Text('Change Password', style: TextStyle(color: textDark)),
               onTap: () => Navigator.pushNamed(context, '/change_password'),
+
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.red),
+              title: const Text('Logout', style: TextStyle(color: Colors.red)),
+              onTap: () async {
+                await AuthService.instance.logout();
+                if (context.mounted) {
+                  Provider.of<PlaylistService>(context, listen: false).clearData();
+                  // Reset theme to light or keep? Let's keep as is or reset.
+                  // Provider.of<ThemeNotifier>(context, listen: false).setTheme(ThemeMode.light);
+                  
+                  Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+                }
+              },
             ),
 
             _buildSectionHeader('Appearance'),

@@ -1,7 +1,6 @@
 // main.dart
 // ignore_for_file: deprecated_member_use, unused_element
 
-import 'package:clone_mp/data/updated_music_data.dart';
 import 'package:clone_mp/services/music_service.dart';
 import 'package:clone_mp/services/theme_notifier.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +12,9 @@ import 'package:clone_mp/screen/search_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:clone_mp/screen/change_password_screen.dart';
 import 'package:clone_mp/screen/about_screen.dart';
+import 'package:clone_mp/screen/artist_detail_screen.dart';
+import 'package:clone_mp/screen/album_detail_screen.dart';
+import 'package:clone_mp/models/album_model.dart';
 import 'package:clone_mp/screen/invite_friends_screen.dart';
 import 'package:clone_mp/screen/splash_screen.dart';
 
@@ -22,14 +24,19 @@ import 'package:clone_mp/screen/notification_screen.dart';
 import 'package:clone_mp/screen/setting_screen.dart';
 import 'package:clone_mp/services/playlist_service.dart';
 import 'package:clone_mp/services/ui_state_service.dart';
+import 'package:clone_mp/services/follow_service.dart';
+import 'package:clone_mp/services/auth_service.dart';
+
 
 void main() {
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeNotifier()),
-        ChangeNotifierProvider(create: (_) => PlaylistService()),
         ChangeNotifierProvider(create: (_) => MusicService()),
+        ChangeNotifierProvider(create: (_) => PlaylistService()),
+        ChangeNotifierProvider(create: (_) => AuthService()),
+        ChangeNotifierProvider(create: (_) => FollowService()),
         ChangeNotifierProvider(create: (_) => UiStateService()),
       ],
       child: const MyApp(),
@@ -97,6 +104,12 @@ class MyApp extends StatelessWidget {
             '/change_password': (context) => const ChangePasswordScreen(),
             '/about': (context) => const AboutScreen(),
             '/invite_friends': (context) => const InviteFriendsScreen(),
+            '/artist': (context) => ArtistDetailScreen(
+              artist: ModalRoute.of(context)!.settings.arguments as Map<String, String>,
+            ),
+            '/album': (context) => AlbumDetailScreen(
+              album: ModalRoute.of(context)!.settings.arguments as AlbumModel,
+            ),
           },
         );
       },
@@ -122,17 +135,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   late final List<Widget> _pages;
 
-  final List<Song> _songPlaylist = allSongs
-      .map(
-        (songData) => Song(
-          title: songData['title']!,
-          artist: songData['artist']!,
-          assetPath: 'audio/${songData['path']!}',
-          imageUrl: songData['image']!,
-        ),
-      )
-      .toList();
-
   @override
   void initState() {
     super.initState();
@@ -144,19 +146,38 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     _musicService.currentDurationNotifier.addListener(() => setState(() {}));
     _musicService.totalDurationNotifier.addListener(() => setState(() {}));
 
+    // Listen for Playback Errors
+    _musicService.errorMessageNotifier.addListener(() {
+      final error = _musicService.errorMessageNotifier.value;
+      if (error != null) {
+        // Show error snackbar
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.white,
+              onPressed: () {
+                _musicService.play();
+              },
+            ),
+          ),
+        );
+      }
+    });
+
     _pages = [
       HomeScreen(
         onPlaySong: _playNewSong,
-        currentSong: _musicService.currentSongNotifier.value != null
-            ? {
-                'title': _musicService.currentSongNotifier.value!.title,
-                'artist': _musicService.currentSongNotifier.value!.artist,
-              }
-            : null,
+        currentSong: _musicService.currentSongNotifier.value,
         isPlaying: _musicService.isPlayingNotifier.value,
         onTogglePlayPause: _togglePlayPause,
       ),
-      SearchScreen(onPlaySong: _playNewSong),
+      SearchScreen(onPlaySong: (song) {
+        _playNewSong(song);
+      }),
       const LibraryScreen(),
     ];
 
@@ -186,13 +207,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     }
   }
 
-  void _playNewSong(Map<String, String> song) {
-    final startIndex = _songPlaylist.indexWhere(
-      (s) => s.title == song['title'],
-    );
-    if (startIndex != -1) {
-      _musicService.loadPlaylist(_songPlaylist, startIndex);
-    }
+  void _playNewSong(SongModel song) {
+    // For V2, we just load this single song as a playlist for now
+    // Ideally, we'd pass the whole list from HomeScreen
+    _musicService.loadPlaylist([song], 0);
   }
 
   void _togglePlayPause() {
@@ -216,15 +234,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final uiStateService = Provider.of<UiStateService>(context);
 
+    // Rebuild HomeScreen with current state
     _pages[0] = HomeScreen(
       onPlaySong: _playNewSong,
       onTogglePlayPause: _togglePlayPause,
-      currentSong: _musicService.currentSongNotifier.value != null
-          ? {
-              'title': _musicService.currentSongNotifier.value!.title,
-              'artist': _musicService.currentSongNotifier.value!.artist,
-            }
-          : null,
+      currentSong: _musicService.currentSongNotifier.value,
       isPlaying: _musicService.isPlayingNotifier.value,
     );
 
@@ -293,7 +307,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   Widget _miniPlayerContent(
-    Song song,
+    SongModel song,
     BuildContext context,
     bool isPlaying,
     VoidCallback onTogglePlayPause,
@@ -345,7 +359,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      song.title,
+                      song.name,
                       style: TextStyle(
                         color: theme.colorScheme.onSurface,
                         fontWeight: FontWeight.bold,
@@ -416,36 +430,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         isPlaying,
         _togglePlayPause,
       ),
-    );
-  }
-
-  Widget _buildTabNavigator({
-    required GlobalKey<NavigatorState> navigatorKey,
-    required Widget rootPage,
-  }) {
-    return Navigator(
-      key: navigatorKey,
-      onGenerateRoute: (routeSettings) {
-        return MaterialPageRoute(
-          settings: routeSettings,
-          builder: (context) {
-            switch (routeSettings.name) {
-              case '/liked_songs':
-                return const LikedSongsScreen();
-              case '/profile':
-                return const ProfileScreen();
-              case '/settings':
-                return const SettingsScreen();
-              case '/notifications':
-                return const NotificationScreen();
-              case '/invite_friends':
-                return const InviteFriendsScreen();
-              default:
-                return rootPage;
-            }
-          },
-        );
-      },
     );
   }
 }

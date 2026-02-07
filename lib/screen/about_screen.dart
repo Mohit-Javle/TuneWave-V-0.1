@@ -64,7 +64,7 @@ class AboutScreen extends StatelessWidget {
             ),
             Center(
               child: Text(
-                'Version 1.0.0',
+                'Version 2.0',
                 style: theme.textTheme.titleMedium?.copyWith(color: textLight),
               ),
             ),
@@ -79,6 +79,17 @@ class AboutScreen extends StatelessWidget {
             ),
             const SizedBox(height: 30),
             const Divider(),
+             ListTile(
+              leading: Icon(Icons.person_pin, color: iconColor),
+              title: Text(
+                'Credits',
+                style: TextStyle(color: textDark),
+              ),
+              subtitle: Text(
+                'Mohit Javle & Mayank Mithapara',
+                style: TextStyle(color: textLight, fontWeight: FontWeight.bold),
+              ),
+            ),
             ListTile(
               leading: Icon(Icons.description_outlined, color: iconColor),
               title: Text(
@@ -93,7 +104,7 @@ class AboutScreen extends StatelessWidget {
                 showLicensePage(
                   context: context,
                   applicationName: 'Music App',
-                  applicationVersion: '1.0.0',
+                  applicationVersion: '2.0',
                   applicationIcon: Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: Image.asset('assets/images/logo.png', width: 48),

@@ -3,6 +3,7 @@
 
 import 'package:clone_mp/screen/playlist_detail_screen.dart';
 import 'package:clone_mp/services/playlist_service.dart';
+import 'package:clone_mp/widgets/create_playlist_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -43,7 +44,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
               children: [
                 _buildHeader(),
                 const SizedBox(height: 16),
-                // ✨ FIX: Removed the condition to always show playlist content
                 Expanded(child: _buildPlaylistContent(playlistService)),
               ],
             ),
@@ -84,47 +84,21 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ),
         IconButton(
           icon: Icon(Icons.add, color: iconColor),
-          onPressed: () => _showCreatePlaylistDialog(),
+          onPressed: () => CreatePlaylistSheet.show(context),
         ),
       ],
     );
   }
 
-  // Note: _buildEmptyState is no longer used, but we can keep it for future use.
-  Widget _buildEmptyState(ThemeData theme) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.music_note_outlined, size: 80, color: Colors.grey),
-          const SizedBox(height: 16),
-          Text(
-            "Your Library is Empty",
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            "Create a playlist or like some songs to get started.",
-            style: TextStyle(
-              color: theme.colorScheme.onSurface.withOpacity(0.7),
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-
+  // Helper because we are mixing Playlist objects and "Liked Songs" concept
   Widget _buildPlaylistContent(PlaylistService playlistService) {
     final userPlaylists = playlistService.playlists;
 
-    // This combined list will now always have at least "Liked Songs"
-    final combinedPlaylists = [
-      Playlist(id: 'liked_songs', name: 'Liked Songs'),
-      ...userPlaylists,
-    ];
+    // We used to treat 'liked_songs' as a specific ID in the list logic, 
+    // but here we just construct a list of Widgets or iterate.
+    // Simpler to just have a list of "items" where item 0 is liked songs.
+    
+    final int totalItems = 1 + userPlaylists.length; // 1 for Liked Songs
 
     if (_isGridView) {
       return CustomScrollView(
@@ -137,26 +111,24 @@ class _LibraryScreenState extends State<LibraryScreen> {
               childAspectRatio: 0.7,
             ),
             delegate: SliverChildBuilderDelegate((context, index) {
-              final item = combinedPlaylists[index];
-              if (item.id == 'liked_songs') {
+              if (index == 0) {
                 return _buildLikedSongsCard();
-              } else {
-                return _buildPlaylistCard(item);
               }
-            }, childCount: combinedPlaylists.length),
+              final playlist = userPlaylists[index - 1];
+              return _buildPlaylistCard(playlist);
+            }, childCount: totalItems),
           ),
         ],
       );
     } else {
       return ListView.builder(
-        itemCount: combinedPlaylists.length,
+        itemCount: totalItems,
         itemBuilder: (context, index) {
-          final item = combinedPlaylists[index];
-          if (item.id == 'liked_songs') {
+          if (index == 0) {
             return _buildLikedSongsTile();
-          } else {
-            return _buildPlaylistTile(item);
           }
+          final playlist = userPlaylists[index - 1];
+          return _buildPlaylistTile(playlist);
         },
       );
     }
@@ -275,7 +247,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             overflow: TextOverflow.ellipsis,
           ),
           Text(
-            '${playlist.songTitles.length} songs',
+            '${playlist.songs.length} songs',
             style: TextStyle(
               fontSize: 12,
               color: theme.colorScheme.onSurface.withOpacity(0.7),
@@ -302,7 +274,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         playlist.name,
         style: const TextStyle(fontWeight: FontWeight.bold),
       ),
-      subtitle: Text('${playlist.songTitles.length} songs'),
+      subtitle: Text('${playlist.songs.length} songs'),
       onTap: () {
         Navigator.push(
           context,
@@ -319,11 +291,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Widget _buildPlaylistArt(Playlist playlist, {required bool isGrid}) {
-    final playlistService = Provider.of<PlaylistService>(
-      context,
-      listen: false,
-    );
-    final songs = playlistService.getSongsForPlaylist(playlist);
+    final songs = playlist.songs;
 
     if (songs.isEmpty) {
       return Container(
@@ -344,7 +312,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       physics: const NeverScrollableScrollPhysics(),
       itemBuilder: (context, index) {
         return Image.network(
-          songs[index]['image']!,
+          songs[index].imageUrl,
           fit: BoxFit.cover,
           errorBuilder: (context, error, stackTrace) => Container(
             color: veryLightOrange.withOpacity(0.5),
@@ -357,120 +325,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
-  void _showCreatePlaylistDialog() {
-    final TextEditingController nameController = TextEditingController();
-    final theme = Theme.of(context);
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: Container(
-            margin: const EdgeInsets.all(16.0),
-            padding: const EdgeInsets.all(24.0),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
-              borderRadius: BorderRadius.circular(30),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 10,
-                  spreadRadius: 2,
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    height: 5,
-                    width: 40,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: theme.unselectedWidgetColor.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-                Text(
-                  "Create New Playlist",
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: primaryOrange,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: nameController,
-                  autofocus: true,
-                  style: TextStyle(color: theme.colorScheme.onSurface),
-                  decoration: InputDecoration(
-                    hintText: "Enter a playlist name",
-                    hintStyle: TextStyle(
-                      color: theme.colorScheme.onSurface.withOpacity(0.5),
-                    ),
-                    filled: true,
-                    fillColor: theme.colorScheme.onSurface.withOpacity(0.05),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () {
-                    if (nameController.text.isNotEmpty) {
-                      Provider.of<PlaylistService>(
-                        context,
-                        listen: false,
-                      ).createPlaylist(nameController.text);
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            "Playlist '${nameController.text}' created!",
-                          ),
-                          backgroundColor: primaryOrange,
-                        ),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Please enter a playlist name."),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryOrange,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text(
-                    "Create",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
 
   void _showPlaylistOptions(Playlist playlist) {
     final theme = Theme.of(context);

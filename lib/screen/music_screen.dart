@@ -1,16 +1,12 @@
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: deprecated_member_use, use_build_context_synchronously
 
-import 'package:clone_mp/services/genius_service.dart';
+import 'package:clone_mp/services/api_service.dart';
 import 'package:clone_mp/services/music_service.dart';
 import 'package:clone_mp/services/playlist_service.dart';
+import 'package:clone_mp/widgets/create_playlist_sheet.dart';
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'package:provider/provider.dart';
-
-// Import the ArtistScreen
-import 'package:clone_mp/screen/artist_screen.dart';
-// Import the music data to build a song map
-import 'package:clone_mp/data/updated_music_data.dart';
 
 // Define a custom PopupMenuEntry for better styling
 class _CustomPopupMenuItem<T> extends PopupMenuEntry<T> {
@@ -87,6 +83,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   Future<String?>? _lyricsFuture;
 
   late final MusicService _musicService;
+  final ApiService _apiService = ApiService();
 
   static const Color primaryOrange = Color(0xFFFF6600);
   static const Color lightestOrange = Color(0xFFFFAF7A);
@@ -115,10 +112,12 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     }
   }
 
-  void _fetchLyrics(Song song) {
-    setState(() {
-      _lyricsFuture = GeniusService.getLyrics(song.title, song.artist);
-    });
+  void _fetchLyrics(SongModel song) {
+    if (mounted) {
+      setState(() {
+        _lyricsFuture = _apiService.getLyrics(song.id);
+      });
+    }
   }
 
   void _handleSongChange() {
@@ -126,7 +125,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     if (newSong != null) {
       _fetchLyrics(newSong);
     }
-    setState(() {});
+    if (mounted) setState(() {});
   }
 
   void _handlePlayerStateChange() {
@@ -152,7 +151,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     BuildContext context,
     Color textDark,
     Color iconColor,
-    Song currentSong,
+    SongModel currentSong,
   ) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -188,22 +187,10 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
             child: PopupMenuButton<String>(
               onSelected: (String result) {
                 if (result == 'about_artist') {
-                  final artist = allArtists.firstWhere(
-                    (a) => a['name'] == currentSong.artist,
-                    orElse: () => {
-                      'name': currentSong.artist,
-                      'image': '',
-                      'headerImage': '',
-                      'followers': '0',
-                      'albums': [],
-                    },
-                  );
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ArtistScreen(artist: artist),
-                    ),
-                  );
+                  // Simplified artist interaction for now
+                   ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Artist details coming soon!')),
+                   );
                 } else if (result == 'about_song') {
                   _showSongDetailsDialog(context, currentSong);
                 } else if (result == 'add_to_playlist') {
@@ -316,6 +303,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                                   child: Image.network(
                                     currentSong.imageUrl,
                                     fit: BoxFit.cover,
+                                    errorBuilder: (_, _, _) => Container(color: Colors.grey),
                                   ),
                                 ),
                               ),
@@ -332,7 +320,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      currentSong.title,
+                                      currentSong.name,
                                       style: TextStyle(
                                         color: textDark,
                                         fontSize: 24,
@@ -619,7 +607,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     return "$minutes:$seconds";
   }
 
-  void _showSongDetailsDialog(BuildContext context, Song song) {
+  void _showSongDetailsDialog(BuildContext context, SongModel song) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -637,7 +625,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
             child: ListBody(
               children: <Widget>[
                 Text(
-                  "Title: ${song.title}",
+                  "Title: ${song.name}",
                   style: TextStyle(color: theme.colorScheme.onSurface),
                 ),
                 const SizedBox(height: 8),
@@ -647,10 +635,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  "Genre: ${allSongs.firstWhere((s) => s['title'] == song.title)['genre']}",
+                  "Album: ${song.album}",
                   style: TextStyle(color: theme.colorScheme.onSurface),
                 ),
-                const SizedBox(height: 8),
               ],
             ),
           ),
@@ -670,7 +657,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     );
   }
 
-  void _showAddToPlaylistOptions(BuildContext context, Song song) {
+  void _showAddToPlaylistOptions(BuildContext context, SongModel song) {
     showModalBottomSheet(
       context: context,
       builder: (context) {
@@ -707,284 +694,52 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                     title: const Text('Create New Playlist'),
                     onTap: () {
                       Navigator.pop(context);
-                      _showCreatePlaylistDialog(context, playlistService, {
-                        'title': song.title,
-                        'artist': song.artist,
-                        'image': song.imageUrl,
-                      });
+                      CreatePlaylistSheet.show(context);
                     },
                   ),
                   Expanded(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      transitionBuilder:
-                          (Widget child, Animation<double> animation) {
-                            return FadeTransition(
-                              opacity: animation,
-                              child: child,
-                            );
-                          },
-                      child: playlists.isEmpty
+                    child: playlists.isEmpty
                           ? Center(
-                              key: const ValueKey('empty_state'),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.playlist_add,
-                                    size: 60,
-                                    color: Theme.of(
-                                      context,
-                                    ).unselectedWidgetColor,
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    "You don't have any playlists yet.",
-                                    style: TextStyle(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.onSurface.withOpacity(0.7),
-                                    ),
-                                  ),
-                                ],
+                              child: Text(
+                                "You don't have any playlists yet.",
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                ),
                               ),
                             )
                           : ListView.builder(
-                              key: const ValueKey('playlist_list'),
                               itemCount: playlists.length,
                               itemBuilder: (context, index) {
                                 final playlist = playlists[index];
-                                final songCount = playlist.songTitles.length;
-                                return Container(
-                                  margin: const EdgeInsets.symmetric(
-                                    vertical: 4.0,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.surfaceContainerHighest,
-                                    borderRadius: BorderRadius.circular(12),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.1),
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: ListTile(
-                                    leading: _buildPlaylistArt(
-                                      playlist,
-                                      playlistService,
-                                    ),
-                                    title: Text(
-                                      playlist.name,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    subtitle: Text('$songCount songs'),
-                                    onTap: () {
-                                      playlistService.addSongsToPlaylist(
-                                        playlist.id,
-                                        [
-                                          {
-                                            'title': song.title,
-                                            'artist': song.artist,
-                                            'image': song.imageUrl,
-                                          },
-                                        ],
-                                      );
-                                      Navigator.pop(context);
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            "Added to '${playlist.name}'.",
-                                          ),
-                                          backgroundColor: primaryOrange,
+                                final songCount = playlist.songs.length;
+                                return ListTile(
+                                  leading: const Icon(Icons.playlist_play),
+                                  title: Text(playlist.name),
+                                  subtitle: Text('$songCount songs'),
+                                  onTap: () {
+                                    playlistService.addSongsToPlaylist(
+                                      playlist.id,
+                                      [song],
+                                    );
+                                    Navigator.pop(context);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Added to ${playlist.name}',
+                                          style: const TextStyle(color: Colors.white),
                                         ),
-                                      );
-                                    },
-                                  ),
+                                        backgroundColor: primaryOrange,
+                                      ),
+                                    );
+                                  },
                                 );
                               },
                             ),
-                    ),
                   ),
                 ],
               ),
             );
           },
-        );
-      },
-    );
-  }
-
-  Widget _buildPlaylistArt(Playlist playlist, PlaylistService playlistService) {
-    final songs = playlistService.getSongsForPlaylist(playlist);
-    if (songs.isEmpty) {
-      return Container(
-        width: 50,
-        height: 50,
-        decoration: BoxDecoration(
-          color: veryLightOrange.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: const Icon(Icons.music_note, color: primaryOrange, size: 30),
-      );
-    }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: SizedBox(
-        width: 50,
-        height: 50,
-        child: GridView.builder(
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-          ),
-          itemCount: songs.length > 4 ? 4 : songs.length,
-          physics: const NeverScrollableScrollPhysics(),
-          itemBuilder: (context, index) {
-            return Image.network(
-              songs[index]['image']!,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) =>
-                  Container(color: veryLightOrange.withOpacity(0.5)),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  void _showCreatePlaylistDialog(
-    BuildContext context,
-    PlaylistService playlistService,
-    Map<String, String> song,
-  ) {
-    final TextEditingController nameController = TextEditingController();
-    final theme = Theme.of(context);
-    final isKeyboardVisible = MediaQuery.of(context).viewInsets.bottom != 0;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-            margin: const EdgeInsets.symmetric(horizontal: 16.0),
-            padding: const EdgeInsets.all(24.0),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(30),
-                topRight: Radius.circular(30),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 10,
-                  spreadRadius: 2,
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    height: 5,
-                    width: 40,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: theme.unselectedWidgetColor.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-                Text(
-                  "Create New Playlist",
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: primaryOrange,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                AnimatedPadding(
-                  duration: const Duration(milliseconds: 300),
-                  padding: EdgeInsets.only(
-                    bottom: isKeyboardVisible ? 16.0 : 0.0,
-                  ),
-                  child: TextField(
-                    controller: nameController,
-                    autofocus: true,
-                    style: TextStyle(color: theme.colorScheme.onSurface),
-                    decoration: InputDecoration(
-                      hintText: "Enter a playlist name",
-                      hintStyle: TextStyle(
-                        color: theme.colorScheme.onSurface.withOpacity(0.5),
-                      ),
-                      filled: true,
-                      fillColor: theme.colorScheme.onSurface.withOpacity(0.05),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () {
-                    if (nameController.text.isNotEmpty) {
-                      playlistService.createPlaylist(nameController.text);
-                      playlistService.addSongsToPlaylist(
-                        playlistService.playlists.last.id,
-                        [song],
-                      );
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            "Created playlist '${nameController.text}' and added the song.",
-                          ),
-                          backgroundColor: primaryOrange,
-                        ),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Please enter a playlist name."),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryOrange,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text(
-                    "Create",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-            ),
-          ),
         );
       },
     );
